@@ -14,6 +14,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 const userFile = path.resolve('data', 'users.json');
+const docsFile = path.resolve('data', 'documents.json');
 
 async function getUsers() {
     try {
@@ -22,6 +23,15 @@ async function getUsers() {
     } catch (error) {
         return [];
     
+    }
+}
+
+async function getDocuments() {
+    try {
+        const data = await fs.readFile(docsFile, 'utf-8');
+        return JSON.parse(data);
+    } catch (error) {
+        return [];
     }
 }
 
@@ -62,6 +72,66 @@ app.post('/api/login', async (req, res) => {
         res.json({ token, username: user.username });
     } catch (error) {
         res.status(500).json({error: 'Błąd serwera podczas logowania'});
+    }
+});
+
+// Weryfikacja tokenu
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token == null) return res.status(401).json({error: 'Brak tokenu'});
+
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) return res.status(403).json({error: 'Nieprawidłowy token'});
+        req.user = user;
+        next();
+    });
+};
+
+//Pobranie dokumentów użytkownika
+app.get('/api/documents', authenticateToken, async (req, res) => {
+    const docs = await getDocuments();
+    const userDocs = docs.filter(doc => doc.ownerId === req.user.id);
+    res.json(userDocs);
+});
+
+//Utworzenie dokumentu
+app.post('/api/documents', authenticateToken, async (req, res) => {
+    try {
+        const { title } = req.body;
+        const docs = await getDocuments();
+        const newDoc = { 
+            id: Date.now().toString(),
+            title: title || 'Nowy dokument',
+            content: '',
+            ownerId: req.user.id,
+            ownerUsername: req.user.username,
+            createdAt: new Date().toISOString()
+        };
+        docs.push(newDoc);
+        await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
+        res.status(201).json(newDoc);
+    } catch (error) {
+        res.status(500).json({error: 'Błąd podczas tworzenia dokumentu'});
+    }
+});
+
+//Usuwanie dokumentu
+app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
+    try {
+        let docs = await getDocuments();
+        const docIndex = docs.findIndex(d => d.id === req.params.id);
+
+        if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
+        
+        if (docs[docIndex].ownerId !== req.user.id) return res.status(403).json({error: 'Brak uprawnień do usuwania dokumentu'});
+        
+        docs.splice(docIndex, 1);
+        await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
+        res.json({message: 'Dokument został usunięty'});
+    } catch (error) {
+        res.status(500).json({error: 'Błąd podczas usuwania dokumentu'});
     }
 });
 
