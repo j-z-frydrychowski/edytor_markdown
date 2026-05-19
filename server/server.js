@@ -4,6 +4,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import fs from 'fs/promises';
 import path from 'path';
+import { WebSocketServer } from 'ws';
+import { data } from 'react-router-dom';
 
 const app = express();
 const PORT = 3000;
@@ -167,6 +169,34 @@ app.put('/api/documents/:id', authenticateToken, async (req, res) => {
 });
 
 //Uruchomienie serwera
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Serwer działa na http://localhost:${PORT}`);
+});
+
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (ws) => {
+    console.log('Nowy klient podłączony do WebSocket');
+
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message);
+            console.log('Serwer otrzymał zmianę dla dokumentu:', data.docId);
+            
+            let count = 0;
+            wss.clients.forEach(client => {
+                if (client !== ws && client.readyState === 1) {
+                    client.send(JSON.stringify(data));
+                    count++;
+                }
+            });
+            console.log(`Rozesłano aktualizację do ${count} innych okien`);
+        } catch (error) {
+            console.error('Błąd odczytu wiadomości', error);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log('Klient rozłączony');
+    });
 });

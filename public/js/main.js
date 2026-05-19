@@ -11,6 +11,7 @@ const currentDocTitle = document.querySelector('#current-doc-title');
 const backBtn = document.querySelector('#back-btn');
 
 let currentDocId = null;
+let ws = null;
 
 export function showMessage(text, type) {
     messageContainer.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
@@ -134,7 +135,23 @@ documentsList.addEventListener('click', async (event) => {
         editorSection.classList.remove('d-none');
         currentDocTitle.textContent = docTitle;
         
-        markdownInput.value = 'Ładowanie dokumentu...';
+        if (ws) ws.close();
+        ws = new WebSocket(`ws://localhost:3000`);
+        
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Odebrano dane z serwera:', data);
+                if (data.type === 'edit' && data.docId === currentDocId) {
+                    markdownInput.value = data.content;
+                    htmlPreview.innerHTML = window.marked.parse(data.content);
+                }
+            } catch (error) {
+                console.error('Błąd WebSocket', error);
+            }
+        };
+
+        markdownInput.value = 'Ładowanie pliku...';
         htmlPreview.innerHTML = '';
 
         try {
@@ -164,11 +181,21 @@ const renderMarkdown = debounce(() => {
     const rawText = markdownInput.value;
     htmlPreview.innerHTML = window.marked.parse(rawText);
     saveDocument(rawText);
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('Wysyłam modyfikację do serwera');
+        ws.send(JSON.stringify({
+            type: 'edit',
+            docId: currentDocId,
+            content: rawText
+        }));
+    }
 }, 300);
 
 markdownInput.addEventListener('input', renderMarkdown);
 
 backBtn.addEventListener('click', () => {
+    if (ws) ws.close();
     editorSection.classList.add('d-none');
     dashboardSection.classList.remove('d-none');
     currentDocId = null;
