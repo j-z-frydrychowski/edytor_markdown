@@ -1,0 +1,7 @@
+.editor-panel {
+    height: 70vh;
+}
+
+.preview-panel {
+    overflow-y: auto;
+}
