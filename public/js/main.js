@@ -11,6 +11,15 @@ const documentsList = document.querySelector('#documents-list');
 const createDocBtn = document.querySelector('#create-doc-btn');
 const logoutBtn = document.querySelector('#logout-btn');
 
+
+const editorSection = document.querySelector('#editor-section');
+const markdownInput = document.querySelector('#markdown-input');
+const htmlPreview = document.querySelector('#html-preview');
+const currentDocTitle = document.querySelector('#current-doc-title');
+const backBtn = document.querySelector('#back-btn');
+
+let currentDocId = null;
+
 //debug
 // console.log('Formularz rejestracji znaleziony:', registerForm !== null);
 // console.log('Kontener wiadomości znaleziony:', messageContainer !== null);
@@ -195,7 +204,47 @@ documentsList.addEventListener('click', async (event) => {
             showMessage('Błąd usuwania', 'danger');
         }
     }
+
+    if (event.target.classList.contains('open-doc-btn')) {
+        currentDocId = event.target.getAttribute('data-id');
+        const docTitle = event.target.closest('li').querySelector('span').textContent;
+        
+        dashboardSection.classList.add('d-none');
+        editorSection.classList.remove('d-none');
+        currentDocTitle.textContent = docTitle;
+        
+        // Czyszczenie pól przed załadowaniem -> pobieranie treści TODO
+        markdownInput.value = '';
+        htmlPreview.innerHTML = '';
+    }
+
 });
 
 // Uruchomienie sprawdzenia stanu na starcie aplikacji
 checkAuth();
+
+// Funkcja opóźniejąca renderowanie (debounce 300 ms)
+function debounce(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            func.apply(this, args);
+        }, wait);
+    };
+}
+
+// Konwersja Markdown na HTML
+const renderMarkdown = debounce(() => {
+    const rawText = markdownInput.value;
+    htmlPreview.innerHTML = window.marked.parse(rawText);
+}, 300);
+
+markdownInput.addEventListener('input', renderMarkdown);
+
+// Powrót do listy dokumentów
+backBtn.addEventListener('click', () =>{
+    editorSection.classList.add('d-none');
+    dashboardSection.classList.remove('d-none');
+    currentDocId = null;
+});
