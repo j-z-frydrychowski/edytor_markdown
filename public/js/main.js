@@ -31,6 +31,35 @@ export async function loadDocuments() {
     }
 }
 
+async function saveDocument(content) {
+    if (!currentDocId) return;
+    const token = localStorage.getItem('token');
+    try {
+        const response = await fetch(`/api/documents/${currentDocId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ content })
+        });
+
+        if (!response.ok) {
+            console.error('Błąd serwera:', await response.text());
+        } else {
+            console.log('Dokument zapisany pomyślnie');
+        }
+    } catch (error) {
+        console.error('Błąd podczas zapisywania dokumentu', error);
+    }
+}
+
+// const readMarkdown = debounce(() => {
+//     const rawText = markdownInput.value;
+//     htmlPreview.innerHTML = window.marked.parse(rawText);
+//     saveDocument(rawText);
+// }, 300);
+
 function renderDocuments(docs) {
     documentsList.innerHTML = '';
     if (docs.length === 0) {
@@ -99,13 +128,27 @@ documentsList.addEventListener('click', async (event) => {
     if (event.target.classList.contains('open-doc-btn')) {
         currentDocId = event.target.getAttribute('data-id');
         const docTitle = event.target.closest('li').querySelector('span').textContent;
+        const token = localStorage.getItem('token');
         
         dashboardSection.classList.add('d-none');
         editorSection.classList.remove('d-none');
         currentDocTitle.textContent = docTitle;
         
-        markdownInput.value = '';
+        markdownInput.value = 'Ładowanie dokumentu...';
         htmlPreview.innerHTML = '';
+
+        try {
+            const response = await fetch(`/api/documents/${currentDocId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const doc = await response.json();
+                markdownInput.value = doc.content || '';
+                htmlPreview.innerHTML = window.marked.parse(doc.content || '');
+            }
+        } catch (error) {
+            showMessage('Błąd podczas ładowania dokumentu', 'danger');
+        }
     }
 });
 
@@ -120,6 +163,7 @@ function debounce(func, wait) {
 const renderMarkdown = debounce(() => {
     const rawText = markdownInput.value;
     htmlPreview.innerHTML = window.marked.parse(rawText);
+    saveDocument(rawText);
 }, 300);
 
 markdownInput.addEventListener('input', renderMarkdown);
@@ -130,4 +174,4 @@ backBtn.addEventListener('click', () => {
     currentDocId = null;
 });
 
-checkAuth();
+if (typeof checkAuth === 'function') checkAuth();

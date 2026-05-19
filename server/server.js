@@ -22,7 +22,6 @@ async function getUsers() {
         return JSON.parse(data);
     } catch (error) {
         return [];
-    
     }
 }
 
@@ -46,7 +45,7 @@ app.post('/api/register', async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = { id: Date.now(), username, password: hashedPassword}
+        const newUser = { id: Date.now(), username, password: hashedPassword};
 
         users.push(newUser);
         await fs.writeFile(userFile, JSON.stringify(users, null, 2));
@@ -132,6 +131,38 @@ app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
         res.json({message: 'Dokument został usunięty'});
     } catch (error) {
         res.status(500).json({error: 'Błąd podczas usuwania dokumentu'});
+    }
+});
+
+// Pobranie dokumentu
+app.get('/api/documents/:id', authenticateToken, async (req, res) => {
+    try {
+        const docs = await getDocuments();
+        const doc = docs.find(d => d.id === req.params.id);
+
+        if (!doc) return res.status(404).json({ error: 'Dokument nie istnieje' });
+        if (doc.ownerId !== req.user.id) return res.status(403).json({ error: 'Brak dostepu' });
+        res.json(doc);
+    } catch (error) {
+        res.status(500).json({error: 'Błąd serwera'});
+    }
+});
+
+// Autozapis dokumentu
+app.put('/api/documents/:id', authenticateToken, async (req, res) => {
+    try {
+        const { content } = req.body;
+        let docs = await getDocuments();
+        const docIndex = docs.findIndex(d => d.id === req.params.id);
+
+        if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
+        if (docs[docIndex].ownerId !== req.user.id) return res.status(403).json({error: 'Brak dostępu do dokumentu'});
+
+        docs[docIndex].content = content;
+        await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
+        res.json({message: 'Zapisano pomyślnie'});
+    } catch (error) {
+        res.status(500).json({error: 'Błąd podczas zapisu'});
     }
 });
 
