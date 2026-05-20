@@ -12,6 +12,30 @@ const backBtn = document.querySelector('#back-btn');
 
 let currentDocId = null;
 let ws = null;
+let lastKnownContent = '';
+let isRemoteUpdate = false;
+
+function getDiff(oldStr, newStr) {
+    let i = 0;
+    while (i < oldStr.length && i < newStr.length && oldStr[i] === newStr[i]) {
+        i++;
+    }
+    let jOld = oldStr.length - 1;
+    let jNew = newStr.length - 1;
+    while (jOld >= 0 && jNew >= i && oldStr[jOld] === newStr[jNew]) {
+        jOld--;
+        jNew--;
+    }
+    return {
+        offset: i,
+        deleted: oldStr.substring(i, jOld + 1),
+        inserted: newStr.substring(i, jNew + 1)
+    };
+}
+
+function applyDiff(content, diff) {
+    return content.substring(0, diff.offset) + diff.inserted + content.substring(diff.offset + diff.deleted.length);
+}
 
 export function showMessage(text, type) {
     messageContainer.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
@@ -136,18 +160,40 @@ documentsList.addEventListener('click', async (event) => {
         currentDocTitle.textContent = docTitle;
         
         if (ws) ws.close();
-        ws = new WebSocket(`ws://localhost:3000`);
+        ws = new WebSocket('ws://localhost:3000');
+        
+        ws.onopen = () => console.log('WebSocket połączony. Stan:', ws.readyState);
+        ws.onerror = (err) => console.error('Błąd połączenia WebSocket:', err);
+        ws.onclose = () => console.log('WebSocket rozłączony');
         
         ws.onmessage = (event) => {
+            console.log('Odebrano surową wiadomość:', event.data);
             try {
                 const data = JSON.parse(event.data);
-                console.log('Odebrano dane z serwera:', data);
                 if (data.type === 'edit' && data.docId === currentDocId) {
-                    markdownInput.value = data.content;
-                    htmlPreview.innerHTML = window.marked.parse(data.content);
+                    console.log('Stosowanie zmian. Stary tekst:', lastKnownContent);
+                    isRemoteUpdate = true;
+                    
+                    const cursorStart = markdownInput.selectionStart;
+                    const cursorEnd = markdownInput.selectionEnd;
+                    
+                    lastKnownContent = applyDiff(lastKnownContent, data.diff);
+                    markdownInput.value = lastKnownContent;
+                    htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
+                    
+                    let offsetChange = 0;
+                    if (cursorStart > data.diff.offset) {
+                        offsetChange = data.diff.inserted.length - data.diff.deleted.length;
+                    }
+                    markdownInput.setSelectionRange(cursorStart + offsetChange, cursorEnd + offsetChange);
+                    
+                    isRemoteUpdate = false;
+                    console.log('Nowy tekst po zmianach:', lastKnownContent);
+                } else {
+                    console.log('Zignorowano wiadomość. Zły typ lub identyfikator dokumentu.');
                 }
             } catch (error) {
-                console.error('Błąd WebSocket', error);
+                console.error('Błąd WebSocket:', error);
             }
         };
 
@@ -160,6 +206,7 @@ documentsList.addEventListener('click', async (event) => {
             });
             if (response.ok) {
                 const doc = await response.json();
+                lastKnownContent = doc.content || '';
                 markdownInput.value = doc.content || '';
                 htmlPreview.innerHTML = window.marked.parse(doc.content || '');
             }
@@ -178,21 +225,32 @@ function debounce(func, wait) {
 }
 
 const renderMarkdown = debounce(() => {
-    const rawText = markdownInput.value;
-    htmlPreview.innerHTML = window.marked.parse(rawText);
-    saveDocument(rawText);
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        console.log('Wysyłam modyfikację do serwera');
-        ws.send(JSON.stringify({
-            type: 'edit',
-            docId: currentDocId,
-            content: rawText
-        }));
-    }
+    htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
+    saveDocument(lastKnownContent);
 }, 300);
 
-markdownInput.addEventListener('input', renderMarkdown);
+markdownInput.addEventListener('input', () => {
+    if (isRemoteUpdate) return;
+    
+    const currentContent = markdownInput.value;
+    const diff = getDiff(lastKnownContent, currentContent);
+    lastKnownContent = currentContent;
+    
+    const hasChanges = diff.inserted.length > 0 || diff.deleted.length > 0;
+    console.log('Próba wysłania. Różnica:', diff, 'Stan gniazda:', ws ? ws.readyState : 'brak');
+    
+    if (ws && ws.readyState === 1 && hasChanges) {
+        const payload = JSON.stringify({
+            type: 'edit',
+            docId: currentDocId,
+            diff: diff
+        });
+        console.log('Wysyłam ładunek:', payload);
+        ws.send(payload);
+    }
+    
+    renderMarkdown();
+});
 
 backBtn.addEventListener('click', () => {
     if (ws) ws.close();
