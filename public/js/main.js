@@ -9,11 +9,27 @@ const markdownInput = document.querySelector('#markdown-input');
 const htmlPreview = document.querySelector('#html-preview');
 const currentDocTitle = document.querySelector('#current-doc-title');
 const backBtn = document.querySelector('#back-btn');
+const activeUsers = new Map();
+const activeUserContainer = document.querySelector('#active-user-container');
 
 let currentDocId = null;
 let ws = null;
 let lastKnownContent = '';
 let isRemoteUpdate = false;
+
+function sendCursorPosition(){
+    if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({
+            type: 'cursor',
+            docId: currentDocId,
+            username: localStorage.getItem('username'),
+            position: markdownInput.selectionStart
+        }));
+    }
+}
+
+markdownInput.addEventListener('keyup', sendCursorPosition);
+markdownInput.addEventListener('click', sendCursorPosition);
 
 function getDiff(oldStr, newStr) {
     let i = 0;
@@ -184,13 +200,14 @@ documentsList.addEventListener('click', async (event) => {
                     let offsetChange = 0;
                     if (cursorStart > data.diff.offset) {
                         offsetChange = data.diff.inserted.length - data.diff.deleted.length;
-                    }
+                    } 
                     markdownInput.setSelectionRange(cursorStart + offsetChange, cursorEnd + offsetChange);
                     
                     isRemoteUpdate = false;
                     console.log('Nowy tekst po zmianach:', lastKnownContent);
-                } else {
-                    console.log('Zignorowano wiadomość. Zły typ lub identyfikator dokumentu.');
+                } else if (data.type === 'cursor' && data.docId === currentDocId ) {
+                    activeUsers.set(data.username, data.position);
+                    renderActiveUsers();
                 }
             } catch (error) {
                 console.error('Błąd WebSocket:', error);
@@ -215,6 +232,20 @@ documentsList.addEventListener('click', async (event) => {
         }
     }
 });
+
+function renderActiveUsers() {
+    if (!activeUserContainer) return;
+    if (activeUserContainer.size === 0) {
+        activeUserContainer.textContent = 'Brak innych użytkowników w dokumencie';
+        return;
+    }
+
+    const usersList = [];
+    activeUsers.forEach((position, username) => {
+        usersList.push(username + ' (pozycja: ' + position + ')');
+    });
+    activeUserContainer.textContent = 'Aktywni użytkownicy: ' + usersList.join(', ');
+}
 
 function debounce(func, wait) {
     let timeout;
@@ -257,6 +288,9 @@ backBtn.addEventListener('click', () => {
     editorSection.classList.add('d-none');
     dashboardSection.classList.remove('d-none');
     currentDocId = null;
+
+    activeUsers.clear();
+    if (activeUserContainer) activeUserContainer.textContent = 'Brak innych użytkowników w dokumencie';
 });
 
 if (typeof checkAuth === 'function') checkAuth();
