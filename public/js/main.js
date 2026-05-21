@@ -12,6 +12,8 @@ const backBtn = document.querySelector('#back-btn');
 const activeUsers = new Map();
 const activeUsersContainer = document.querySelector('#active-user-container');
 const connectionStatus = document.querySelector('#connection-status');
+const exportMdBtn = document.querySelector('#export-md-button');
+const exportHtmlBtn = document.querySelector('#export-html-button');
 
 let currentDocId = null;
 let ws = null;
@@ -362,3 +364,30 @@ backBtn.addEventListener('click', () => {
 });
 
 if (typeof checkAuth === 'function') checkAuth();
+
+function donwloadFile(filename, content, type) {
+    const blob = new Blob([content], { type: type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+if (exportMdBtn) {
+    exportMdBtn.addEventListener('click', () => {
+        if (!currentDocId) return;
+        const title = currentDocTitle.textContent || 'dokument';
+        donwloadFile(title + '.md', lastKnownContent, 'text/markdown');
+    });
+}
+
+if (exportHtmlBtn) {
+    exportHtmlBtn.addEventListener('click', () => {
+        if (!currentDocId) return;
+        const title = currentDocTitle.textContent || 'dokument';
+        const htmlContent = '<!DOCTYPE html>\n<html lang="pl">\n<head>\n<meta charset="utf-8">\n<title>' + title + '</title>\n</head>\n<body>\n' + htmlPreview.innerHTML + '\n</body>\n</html>';
+        donwloadFile(title + '.html', htmlContent, 'text/html');
+    });
+}
