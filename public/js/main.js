@@ -11,13 +11,40 @@ const currentDocTitle = document.querySelector('#current-doc-title');
 const backBtn = document.querySelector('#back-btn');
 const activeUsers = new Map();
 const activeUserContainer = document.querySelector('#active-user-container');
+const connectionStatus = document.querySelector('#connection-status');
 
 let currentDocId = null;
 let ws = null;
 let lastKnownContent = '';
 let isRemoteUpdate = false;
 
-function sendCursorPosition(){
+function saveOfflineEdit(diff) {
+    if(!currentDocId) return;
+    const key = 'offlineEdits_' + currentDocId;
+    const queue = JSON.parse(localStorage.getItem(key) || '[]');
+    queue.push(diff);
+    localStorage.setItem(key, JSON.stringify(queue));
+}
+
+function syncOfflineEdits() { 
+    if(!currentDocId || !ws || ws.readyState !== 1) return;
+    const key = 'offlineEdits_' + currentDocId;
+    const queue = JSON.parse(localStorage.getItem(key) || '[]');
+    if(queue.length === 0) return;
+
+    queue.forEach(diff => {
+        ws.send(JSON.stringify({
+            type: 'edit',
+            docId: currentDocId,
+            diff: diff
+        }));
+    });
+    localStorage.removeItem(key);
+
+    saveDocument(lastKnownContent);
+}
+
+function sendCursorPosition() {
     if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({
             type: 'cursor',
@@ -57,23 +84,99 @@ export function showMessage(text, type) {
     messageContainer.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
 }
 
+function connectWebSocket() {
+    if (!currentDocId) return;
+    
+    if (ws) {
+        ws.onclose = null;
+        ws.close();
+    }
+
+    ws = new WebSocket('ws://localhost:3000');
+    
+    ws.onopen = () => {
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Status: Online';
+            connectionStatus.className = 'mb-3 text-success fw-bold';
+        }
+        syncOfflineEdits();
+    };
+
+    ws.onclose = () => {
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Status: Offline';
+            connectionStatus.className = 'mb-3 text-danger fw-bold';
+        }
+
+        if (currentDocId) {
+            setTimeout(connectWebSocket, 3000);
+        }
+    };
+
+    ws.onerror = (err) => {
+        console.error('Błąd połączenia WebSocket', err);
+    }
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'edit' && data.docId === currentDocId) {
+                isRemoteUpdate = true;
+
+                const cursorStart = markdownInput.selectionStart;
+                const cursorEnd = markdownInput.selectionEnd;
+
+                lastKnownContent = applyDiff(lastKnownContent, data.diff);
+                markdownInput.value = lastKnownContent;
+                htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
+
+                let offsetChange = 0;
+                if (cursorStart > data.diff.offset) {
+                    offsetChange = data.diff.inserted.length - data.diff.deleted.length;
+                }
+                markdownInput.setSelectionRange(cursorStart + offsetChange, cursorEnd + offsetChange);
+
+                isRemoteUpdate = false;
+            } else if (data.type === 'cursor' && data.docId === currentDocId) {
+                activeUsers.set(data.username, data.position);
+                renderActiveUsers();
+            }
+        } catch (error) {
+        console.error('Błąd WebSocket', error);
+        }
+    };
+}
+
 export async function loadDocuments() {
     const token = localStorage.getItem('token');
+    if(!token) return;
+
     try {
         const response = await fetch('/api/documents', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!response.ok) throw new Error('Brak autoryzacji');
+
+        if (!response.ok) {
+            if(response.status === 401 || response.status === 403) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                checkAuth();
+                return
+            }
+            throw new Error('Błąd ładowania dokumentów');
+        }
+
         const docs = await response.json();
         renderDocuments(docs);
     } catch (error) {
-        localStorage.removeItem('token');
-        checkAuth();
+        console.error(error);
+        showMessage('Błąd ładowania dokumentów', 'danger');
     }
 }
 
 async function saveDocument(content) {
-    if (!currentDocId) return;
+    if (!currentDocId || !ws || ws.readyState !== 1) return;
     const token = localStorage.getItem('token');
     try {
         const response = await fetch(`/api/documents/${currentDocId}`, {
@@ -175,48 +278,11 @@ documentsList.addEventListener('click', async (event) => {
         editorSection.classList.remove('d-none');
         currentDocTitle.textContent = docTitle;
         
-        if (ws) ws.close();
-        ws = new WebSocket('ws://localhost:3000');
-        
-        ws.onopen = () => console.log('WebSocket połączony. Stan:', ws.readyState);
-        ws.onerror = (err) => console.error('Błąd połączenia WebSocket:', err);
-        ws.onclose = () => console.log('WebSocket rozłączony');
-        
-        ws.onmessage = (event) => {
-            console.log('Odebrano surową wiadomość:', event.data);
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'edit' && data.docId === currentDocId) {
-                    console.log('Stosowanie zmian. Stary tekst:', lastKnownContent);
-                    isRemoteUpdate = true;
-                    
-                    const cursorStart = markdownInput.selectionStart;
-                    const cursorEnd = markdownInput.selectionEnd;
-                    
-                    lastKnownContent = applyDiff(lastKnownContent, data.diff);
-                    markdownInput.value = lastKnownContent;
-                    htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
-                    
-                    let offsetChange = 0;
-                    if (cursorStart > data.diff.offset) {
-                        offsetChange = data.diff.inserted.length - data.diff.deleted.length;
-                    } 
-                    markdownInput.setSelectionRange(cursorStart + offsetChange, cursorEnd + offsetChange);
-                    
-                    isRemoteUpdate = false;
-                    console.log('Nowy tekst po zmianach:', lastKnownContent);
-                } else if (data.type === 'cursor' && data.docId === currentDocId ) {
-                    activeUsers.set(data.username, data.position);
-                    renderActiveUsers();
-                }
-            } catch (error) {
-                console.error('Błąd WebSocket:', error);
-            }
-        };
+        connectWebSocket();
 
         markdownInput.value = 'Ładowanie pliku...';
         htmlPreview.innerHTML = '';
-
+        
         try {
             const response = await fetch(`/api/documents/${currentDocId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -224,8 +290,8 @@ documentsList.addEventListener('click', async (event) => {
             if (response.ok) {
                 const doc = await response.json();
                 lastKnownContent = doc.content || '';
-                markdownInput.value = doc.content || '';
-                htmlPreview.innerHTML = window.marked.parse(doc.content || '');
+                markdownInput.value = lastKnownContent;
+                htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
             }
         } catch (error) {
             showMessage('Błąd podczas ładowania dokumentu', 'danger');
@@ -268,26 +334,28 @@ markdownInput.addEventListener('input', () => {
     lastKnownContent = currentContent;
     
     const hasChanges = diff.inserted.length > 0 || diff.deleted.length > 0;
-    console.log('Próba wysłania. Różnica:', diff, 'Stan gniazda:', ws ? ws.readyState : 'brak');
     
-    if (ws && ws.readyState === 1 && hasChanges) {
-        const payload = JSON.stringify({
-            type: 'edit',
-            docId: currentDocId,
-            diff: diff
-        });
-        console.log('Wysyłam ładunek:', payload);
-        ws.send(payload);
+    if (hasChanges) {
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({
+                type: 'edit',
+                docId: currentDocId,
+                diff: diff
+            }));
+            sendCursorPosition();
+        } else {
+            saveOfflineEdit(diff);
+        }
     }
     
     renderMarkdown();
 });
 
 backBtn.addEventListener('click', () => {
+    currentDocId = null;
     if (ws) ws.close();
     editorSection.classList.add('d-none');
     dashboardSection.classList.remove('d-none');
-    currentDocId = null;
 
     activeUsers.clear();
     if (activeUserContainer) activeUserContainer.textContent = 'Brak innych użytkowników w dokumencie';
