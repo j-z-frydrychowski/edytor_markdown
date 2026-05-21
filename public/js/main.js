@@ -10,7 +10,7 @@ const htmlPreview = document.querySelector('#html-preview');
 const currentDocTitle = document.querySelector('#current-doc-title');
 const backBtn = document.querySelector('#back-btn');
 const activeUsers = new Map();
-const activeUserContainer = document.querySelector('#active-user-container');
+const activeUsersContainer = document.querySelector('#active-user-container');
 const connectionStatus = document.querySelector('#connection-status');
 
 let currentDocId = null;
@@ -300,9 +300,9 @@ documentsList.addEventListener('click', async (event) => {
 });
 
 function renderActiveUsers() {
-    if (!activeUserContainer) return;
-    if (activeUserContainer.size === 0) {
-        activeUserContainer.textContent = 'Brak innych użytkowników w dokumencie';
+    if (!activeUsersContainer) return;
+    if (activeUsersContainer.size === 0) {
+        activeUsersContainer.textContent = 'Brak innych użytkowników w dokumencie';
         return;
     }
 
@@ -310,7 +310,7 @@ function renderActiveUsers() {
     activeUsers.forEach((position, username) => {
         usersList.push(username + ' (pozycja: ' + position + ')');
     });
-    activeUserContainer.textContent = 'Aktywni użytkownicy: ' + usersList.join(', ');
+    activeUsersContainer.textContent = 'Aktywni użytkownicy: ' + usersList.join(', ');
 }
 
 function debounce(func, wait) {
@@ -358,7 +358,7 @@ backBtn.addEventListener('click', () => {
     dashboardSection.classList.remove('d-none');
 
     activeUsers.clear();
-    if (activeUserContainer) activeUserContainer.textContent = 'Brak innych użytkowników w dokumencie';
+    if (activeUsersContainer) activeUsersContainer.textContent = 'Brak innych użytkowników w dokumencie';
 });
 
 if (typeof checkAuth === 'function') checkAuth();

@@ -5,7 +5,6 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs/promises';
 import path from 'path';
 import { WebSocketServer } from 'ws';
-import { data } from 'react-router-dom';
 
 const app = express();
 const PORT = 3000;
