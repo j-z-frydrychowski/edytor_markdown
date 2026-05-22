@@ -10,7 +10,7 @@ const htmlPreview = document.querySelector('#html-preview');
 const currentDocTitle = document.querySelector('#current-doc-title');
 const backBtn = document.querySelector('#back-btn');
 const activeUsers = new Map();
-const activeUsersContainer = document.querySelector('#active-user-container');
+const activeUsersContainer = document.querySelector('#active-users-container');
 const connectionStatus = document.querySelector('#connection-status');
 const exportMdBtn = document.querySelector('#export-md-button');
 const exportHtmlBtn = document.querySelector('#export-html-button');
@@ -58,6 +58,18 @@ function sendCursorPosition() {
     }
 }
 
+function sendLeaveMessage() {
+    if (ws && ws.readyState === 1 && currentDocId) {
+        ws.send(JSON.stringify({
+            type: 'leave',
+            docId: currentDocId,
+            username: localStorage.getItem('username')
+        }));
+    }
+}
+
+window.addEventListener('beforeunload', sendLeaveMessage);
+
 markdownInput.addEventListener('keyup', sendCursorPosition);
 markdownInput.addEventListener('click', sendCursorPosition);
 
@@ -103,6 +115,7 @@ function connectWebSocket() {
             connectionStatus.className = 'mb-3 text-success fw-bold';
         }
         syncOfflineEdits();
+        sendCursorPosition();
     };
 
     ws.onclose = () => {
@@ -142,7 +155,13 @@ function connectWebSocket() {
 
                 isRemoteUpdate = false;
             } else if (data.type === 'cursor' && data.docId === currentDocId) {
+                const isNewUser = !activeUsers.has(data.username);
                 activeUsers.set(data.username, data.position);
+                renderActiveUsers();
+
+                if (isNewUser) sendCursorPosition();
+            } else if (data.type === 'leave' && data.docId === currentDocId) {
+                activeUsers.delete(data.username);
                 renderActiveUsers();
             }
         } catch (error) {
@@ -355,8 +374,8 @@ documentsList.addEventListener('click', async (event) => {
 
 function renderActiveUsers() {
     if (!activeUsersContainer) return;
-    if (activeUsersContainer.size === 0) {
-        activeUsersContainer.textContent = 'Brak innych użytkowników w dokumencie';
+    if (activeUsers.size === 0) {
+        activeUsersContainer.textContent = 'Brak innych użytkowników w dokumencie.';
         return;
     }
 
@@ -406,6 +425,7 @@ markdownInput.addEventListener('input', () => {
 });
 
 backBtn.addEventListener('click', () => {
+    sendLeaveMessage();
     currentDocId = null;
     if (ws) ws.close();
     editorSection.classList.add('d-none');
