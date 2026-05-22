@@ -19,6 +19,7 @@ let currentDocId = null;
 let ws = null;
 let lastKnownContent = '';
 let isRemoteUpdate = false;
+let lastDocsSnapshot = '';
 
 function saveOfflineEdit(diff) {
     if(!currentDocId) return;
@@ -170,7 +171,12 @@ export async function loadDocuments() {
         }
 
         const docs = await response.json();
-        renderDocuments(docs);
+        const currentSnapshot = JSON.stringify(docs);
+
+        if (currentSnapshot !== lastDocsSnapshot) { 
+            lastDocsSnapshot = currentSnapshot;
+            renderDocuments(docs);
+        } 
     } catch (error) {
         console.error(error);
         showMessage('Błąd ładowania dokumentów', 'danger');
@@ -212,14 +218,30 @@ function renderDocuments(docs) {
         documentsList.innerHTML = '<li class="list-group-item text-muted">Brak dokumentów. Utwórz nowy dokument.</li>';
         return;
     }
+
+    const currentUsername = localStorage.getItem('username');
+
     docs.forEach(doc => {
         const li = document.createElement('li');
         li.className = 'list-group-item d-flex justify-content-between align-items-center';
+
+        const isOwner = doc.ownerUsername === currentUsername;
+
+        let buttonsHtml = `<button class="btn btn-sm btn-success open-doc-btn" data-id="${doc.id}">Otwórz</button>`;
+
+        if (isOwner) {
+            buttonsHtml += `
+                <button class="btn btn-sm btn-primary share-doc-btn ms-1" data-id="${doc.id}">Udostępnij</button>
+                <button class="btn btn-sm btn-danger delete-doc-btn ms-1" data-id="${doc.id}">Usuń</button>
+            `;
+        } else {
+            li.classList.add('bg-light');
+            buttonsHtml += `<span class="badge bg-info text-dark ms-2">Od: ${doc.ownerUsername}</span>`;
+        }
         li.innerHTML = `
             <span>${doc.title}</span>
             <div>
-                <button class="btn btn-sm btn-success open-doc-btn" data-id="${doc.id}">Otwórz</button>
-                <button class="btn btn-sm btn-danger delete-doc-btn" data-id="${doc.id}">Usuń</button>
+                ${buttonsHtml}
             </div>
         `;
         documentsList.appendChild(li);
@@ -297,6 +319,36 @@ documentsList.addEventListener('click', async (event) => {
             }
         } catch (error) {
             showMessage('Błąd podczas ładowania dokumentu', 'danger');
+        }
+    }
+
+    if (event.target.classList.contains('share-doc-btn')) {
+        const docId = event.target.getAttribute('data-id');
+        const token = localStorage.getItem('token');
+        let usernameToShare = prompt('Podaj nazwę użytkownika, z którym chcesz udostępnić dokument:');
+        
+        if (!usernameToShare) return;
+        
+        usernameToShare = usernameToShare.trim();
+
+        try {
+            const response = await fetch(`/api/documents/${docId}/share`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ username: usernameToShare })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                showMessage(data.message, 'success');
+            } else {
+                showMessage(data.error, 'danger');
+            }
+        } catch (error) {
+            showMessage('Błąd udstępniania', 'danger');
         }
     }
 });
@@ -391,3 +443,7 @@ if (exportHtmlBtn) {
         donwloadFile(title + '.html', htmlContent, 'text/html');
     });
 }
+
+setInterval(() => {
+    if (dashboardSection.classList.contains('d-none')) loadDocuments();
+}, 5000);

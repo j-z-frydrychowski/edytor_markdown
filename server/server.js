@@ -92,7 +92,10 @@ const authenticateToken = (req, res, next) => {
 //Pobranie dokumentów użytkownika
 app.get('/api/documents', authenticateToken, async (req, res) => {
     const docs = await getDocuments();
-    const userDocs = docs.filter(doc => doc.ownerId === req.user.id);
+    const userDocs = docs.filter(doc => 
+        doc.ownerId === req.user.id || 
+        (doc.sharedWith && doc.sharedWith.includes(req.user.username))
+    );
     res.json(userDocs);
 });
 
@@ -107,6 +110,7 @@ app.post('/api/documents', authenticateToken, async (req, res) => {
             content: '',
             ownerId: req.user.id,
             ownerUsername: req.user.username,
+            sharedWith: [],
             createdAt: new Date().toISOString()
         };
         docs.push(newDoc);
@@ -142,7 +146,12 @@ app.get('/api/documents/:id', authenticateToken, async (req, res) => {
         const doc = docs.find(d => d.id === req.params.id);
 
         if (!doc) return res.status(404).json({ error: 'Dokument nie istnieje' });
-        if (doc.ownerId !== req.user.id) return res.status(403).json({ error: 'Brak dostepu' });
+
+        const isOwner = doc.ownerId === req.user.id;
+        const isShared = doc.sharedWith && doc.sharedWith.includes(req.user.username);
+
+        if (!isOwner && !isShared) return res.status(403).json({ error: 'Brak dostepu' });
+
         res.json(doc);
     } catch (error) {
         res.status(500).json({error: 'Błąd serwera'});
@@ -157,13 +166,46 @@ app.put('/api/documents/:id', authenticateToken, async (req, res) => {
         const docIndex = docs.findIndex(d => d.id === req.params.id);
 
         if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
-        if (docs[docIndex].ownerId !== req.user.id) return res.status(403).json({error: 'Brak dostępu do dokumentu'});
+
+        const doc = docs[docIndex];
+        const isOwner = doc.ownerId === req.user.id;
+        const isShared = doc.sharedWith && doc.sharedWith.includes(req.user.username);
+
+        if (!isOwner && !isShared) return res.status(403).json({error: 'Brak dostępu do dokumentu'});
 
         docs[docIndex].content = content;
         await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
         res.json({message: 'Zapisano pomyślnie'});
     } catch (error) {
         res.status(500).json({error: 'Błąd podczas zapisu'});
+    }
+});
+
+app.post(`/api/documents/:id/share`, authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.body;
+        let docs = await getDocuments();
+        const docIndex = docs.findIndex(d => d.id === req.params.id);
+
+        if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
+        if (docs[docIndex].ownerId !== req.user.id) return res.status(403).json({error: 'Tylko właściciel może udostępniać dokument'});
+
+        const users = await getUsers();
+        if(!users.find(u => u.username === username)) {
+            return res.status(404).json({error: 'Użytkownik nie istnieje'});
+        }
+
+        if (!docs[docIndex].sharedWith) {
+            docs[docIndex].sharedWith = [];
+        }
+
+        if (!docs[docIndex].sharedWith.includes(username)) {
+            docs[docIndex].sharedWith.push(username);
+            await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
+        }
+        res.json({message: `Dokument udostępniony użytkownikowi ${username}`});
+    } catch (error) {
+        res.status(500).json({error: 'Błąd podczas udostępniania dokumentu'});
     }
 });
 
