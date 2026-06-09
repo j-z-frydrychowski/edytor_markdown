@@ -194,6 +194,7 @@ app.put('/api/documents/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// wersjonowanie dokumentu
 app.post(`/api/documents/:id/share`, authenticateToken, async (req, res) => {
     try {
         const { username } = req.body;
@@ -219,6 +220,33 @@ app.post(`/api/documents/:id/share`, authenticateToken, async (req, res) => {
         res.json({message: `Dokument udostępniony użytkownikowi ${username}`});
     } catch (error) {
         res.status(500).json({error: 'Błąd podczas udostępniania dokumentu'});
+    }
+});
+
+app.post('/api/documents/:id/versions', authenticateToken, async (req, res) => {
+    try {
+        let docs = await getDocuments();
+        const docIndex = docs.findIndex(d => d.id === req.params.id);
+
+        if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
+
+        const doc = docs[docIndex];
+        const isOwner = doc.ownerId === req.user.id;
+        const isShared = doc.sharedWith && doc.sharedWith.includes(req.user.username);
+
+        if (!isOwner && !isShared) return res.status(403).json({error: 'Brak uprawnień'});
+
+        if (!doc.versions) doc.versions = [];
+        
+        doc.versions.push({
+            timestamp: new Date().toISOString(),
+            content: doc.content
+        });
+
+        await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
+        res.status(201).json({ message: 'Zapisano wersję dokumentu', versions: doc.versions });
+    } catch (error) {
+        res.status(500).json({error: 'Błąd podczas zapisu wersji'});
     }
 });
 

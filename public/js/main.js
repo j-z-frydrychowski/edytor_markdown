@@ -15,6 +15,8 @@ const connectionStatus = document.querySelector('#connection-status');
 const exportMdBtn = document.querySelector('#export-md-button');
 const exportHtmlBtn = document.querySelector('#export-html-button');
 const cursorsLayer = document.querySelector('#cursors-layer');
+const saveVersionBtn = document.querySelector('#save-version-btn');
+const versionsList = document.querySelector('#versions-list');
 
 let currentDocId = null;
 let ws = null;
@@ -267,6 +269,29 @@ function renderDocuments(docs) {
     });
 }
 
+function renderVersions(versions) {
+    if (!versionsList) return;
+    versionsList.innerHTML = '';
+    
+    if (!versions || versions.length === 0) {
+        versionsList.innerHTML = '<li class="list-group-item text-muted">Brak zapisanych wersji</li>';
+        return;
+    }
+
+    versions.forEach((ver, index) => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item p-2';
+        const date = new Date(ver.timestamp).toLocaleString('pl-PL');
+        
+        li.innerHTML = `
+            <div class="fw-bold">Wersja ${index + 1}</div>
+            <div class="text-muted" style="font-size: 0.8em">${date}</div>
+            <button class="btn btn-sm btn-warning mt-1 w-100 restore-version-btn" data-content="${encodeURIComponent(ver.content)}">Przywróć</button>
+        `;
+        versionsList.appendChild(li);
+    });
+}
+
 createDocBtn.addEventListener('click', async () => {
     const token = localStorage.getItem('token');
     const title = prompt('Podaj tytuł dokumentu:');
@@ -335,6 +360,7 @@ documentsList.addEventListener('click', async (event) => {
                 lastKnownContent = doc.content || '';
                 markdownInput.value = lastKnownContent;
                 htmlPreview.innerHTML = window.marked.parse(lastKnownContent);
+                renderVersions(doc.versions);
             }
         } catch (error) {
             showMessage('Błąd podczas ładowania dokumentu', 'danger');
@@ -371,6 +397,53 @@ documentsList.addEventListener('click', async (event) => {
         }
     }
 });
+
+if (saveVersionBtn) {
+    saveVersionBtn.addEventListener('click', async () => {
+        if (!currentDocId) return;
+        const token = localStorage.getItem('token');
+        
+        try {
+            const response = await fetch(`/api/documents/${currentDocId}/versions`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                renderVersions(data.versions);
+                showMessage(data.message, 'success');
+            } else {
+                showMessage(data.error, 'danger');
+            }
+        } catch (error) {
+            showMessage('Błąd połączenia', 'danger');
+        }
+    });
+}
+
+if (versionsList) {
+    versionsList.addEventListener('click', (event) => {
+        if (event.target.classList.contains('restore-version-btn')) {
+            if (!confirm('Czy na pewno chcesz nadpisać obecny dokument tą wersją?')) return;
+            
+            const rawContent = decodeURIComponent(event.target.getAttribute('data-content'));
+            const diff = getDiff(lastKnownContent, rawContent);
+            
+            lastKnownContent = rawContent;
+            markdownInput.value = rawContent;
+            renderMarkdown();
+            
+            if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({
+                    type: 'edit',
+                    docId: currentDocId,
+                    diff: diff
+                }));
+            }
+            showMessage('Wersja przywrócona', 'success');
+        }
+    });
+}
 
 function getCaretCoordinates(element, position) {
     const mirror = document.createElement('div');

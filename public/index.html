@@ -58,6 +58,7 @@
                 <h2 id="current-doc-title" class="mb-0">Tytuł dokumentu</h2>
                 <div>
                     <button id="export-md-button" class="btn btn-outline-primary me-2">Pobierz .md</button>
+                    <button id="save-version-btn" class="btn btn-outline-success me-2">Zapisz wersję</button>
                     <button id="export-html-button" class="btn btn-outline-info me-2">Pobierz .html</button>
                     <button id="back-btn" class="btn btn-secondary">Wróć do listy</button>
                 </div>
@@ -65,13 +66,15 @@
             <div id="connection-status" class="mb-3 text-success fw-bold">Status: Online</div>
             
             <div class="row">
-                <div class="col-md-6">
-                    <div class="position-relative w-100">
-                        <textarea id="markdown-input" class="form-control editor-panel" placeholder="Wpisz kod Markdown..."></textarea>
-                        <div id="cursors-layer" class="position-absolute top-0 start-0 w-100 h-100 pe-none"></div>
-                    </div>
+                <div class="col-md-2">
+                    <h5>Historia</h5>
+                    <ul id="versions-list" class="list-group list-group-flush small preview-panel"></ul>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-5 position-relative">
+                    <textarea id="markdown-input" class="form-control editor-panel" placeholder="Wpisz kod Markdown..."></textarea>
+                    <div id="cursors-layer" class="position-absolute top-0 start-0 w-100 h-100 pe-none"></div>
+                </div>
+                <div class="col-md-5">
                     <div id="html-preview" class="border p-3 bg-white preview-panel"></div>
                 </div>
             </div>
