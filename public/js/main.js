@@ -25,6 +25,7 @@ function saveOfflineEdit(diff) {
     if(!currentDocId) return;
     const key = 'offlineEdits_' + currentDocId;
     const queue = JSON.parse(localStorage.getItem(key) || '[]');
+    const diffLength = queue.
     queue.push(diff);
     localStorage.setItem(key, JSON.stringify(queue));
 }
@@ -53,7 +54,7 @@ function sendCursorPosition() {
             type: 'cursor',
             docId: currentDocId,
             username: localStorage.getItem('username'),
-            position: markdownInput.selectionStart
+            position: markdownInput.selectionStart,
         }));
     }
 }
@@ -224,12 +225,6 @@ async function saveDocument(content) {
         console.error('Błąd podczas zapisywania dokumentu', error);
     }
 }
-
-// const readMarkdown = debounce(() => {
-//     const rawText = markdownInput.value;
-//     htmlPreview.innerHTML = window.marked.parse(rawText);
-//     saveDocument(rawText);
-// }, 300);
 
 function renderDocuments(docs) {
     documentsList.innerHTML = '';
