@@ -46,7 +46,12 @@ app.post('/api/register', async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = { id: Date.now(), username, password: hashedPassword};
+        const newUser = {
+            id: Date.now(),
+            username: req.body.username,
+            password: hashedPassword,
+            role: 'user'
+        };
 
         users.push(newUser);
         await fs.writeFile(userFile, JSON.stringify(users, null, 2));
@@ -68,7 +73,12 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({error: 'Nieprawidłowe dane logowania'});
         }
 
-        const token = jwt.sign({ id: user.id, username: user.username}, SECRET_KEY, { expiresIn: '1h'});
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role },
+            SECRET_KEY,
+            { expiresIn: '1h' }
+        );
+
         res.json({ token, username: user.username });
     } catch (error) {
         res.status(500).json({error: 'Błąd serwera podczas logowania'});
@@ -129,7 +139,10 @@ app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
 
         if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
         
-        if (docs[docIndex].ownerId !== req.user.id) return res.status(403).json({error: 'Brak uprawnień do usuwania dokumentu'});
+        const document = documents.find(doc => doc.id === req.params.id);
+        if (document.ownerId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Brak uprawnień do usunięcia tego dokumentu' });
+        }
         
         docs.splice(docIndex, 1);
         await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));

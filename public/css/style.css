@@ -3,5 +3,26 @@
 }
 
 .preview-panel {
+    height: 70vh;
     overflow-y: auto;
+}
+
+.remote-cursor {
+    position: absolute;
+    width: 2px;
+    height: 1.2em;
+    background-color: red;
+    z-index: 10;
+    transition: all 0.1s;
+}
+.remote-cursor-label {
+    position: absolute;
+    top: -15px;
+    left: 0;
+    font-size: 10px;
+    background: red;
+    color: white;
+    padding: 2px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
 }

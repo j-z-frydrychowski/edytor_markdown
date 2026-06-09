@@ -14,6 +14,7 @@ const activeUsersContainer = document.querySelector('#active-users-container');
 const connectionStatus = document.querySelector('#connection-status');
 const exportMdBtn = document.querySelector('#export-md-button');
 const exportHtmlBtn = document.querySelector('#export-html-button');
+const cursorsLayer = document.querySelector('#cursors-layer');
 
 let currentDocId = null;
 let ws = null;
@@ -367,18 +368,68 @@ documentsList.addEventListener('click', async (event) => {
     }
 });
 
-function renderActiveUsers() {
-    if (!activeUsersContainer) return;
-    if (activeUsers.size === 0) {
-        activeUsersContainer.textContent = 'Brak innych użytkowników w dokumencie.';
-        return;
-    }
+function getCaretCoordinates(element, position) {
+    const mirror = document.createElement('div');
+    const computed = window.getComputedStyle(element);
 
-    const usersList = [];
-    activeUsers.forEach((position, username) => {
-        usersList.push(username + ' (pozycja: ' + position + ')');
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordBreak = 'break-word';
+
+    const stylesToCopy = [
+        'direction', 'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
+        'borderWidth', 'borderStyle', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'fontFamily', 'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch',
+        'fontSize', 'fontSizeAdjust', 'lineHeight', 'letterSpacing',
+        'wordSpacing', 'textTransform', 'textIndent', 'textDecoration',
+        'textRendering'
+    ];
+
+    stylesToCopy.forEach(style => {
+        mirror.style[style] = computed[style];
     });
-    activeUsersContainer.textContent = 'Aktywni użytkownicy: ' + usersList.join(', ');
+
+    document.body.appendChild(mirror);
+
+    const textBeforeCaret = element.value.substring(0, position);
+    mirror.textContent = textBeforeCaret;
+
+    const span = document.createElement('span');
+    span.textContent = element.value.substring(position, position + 1) || '.';
+    mirror.appendChild(span);
+
+    const coordinates = {
+        top: span.offsetTop - element.scrollTop,
+        left: span.offsetLeft - element.scrollLeft
+    };
+
+    document.body.removeChild(mirror);
+
+    return coordinates;
+}
+
+function renderActiveUsers() {
+    if (!cursorsLayer) return;
+    
+    cursorsLayer.innerHTML = '';
+
+    activeUsers.forEach((position, username) => {
+        const coords = getCaretCoordinates(markdownInput, position);
+        
+        const cursorEl = document.createElement('div');
+        cursorEl.className = 'remote-cursor';
+        
+        cursorEl.style.left = coords.left + 'px';
+        cursorEl.style.top = coords.top + 'px';
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'remote-cursor-label';
+        labelEl.textContent = username;
+        
+        cursorEl.appendChild(labelEl);
+        cursorsLayer.appendChild(cursorEl);
+    });
 }
 
 function debounce(func, wait) {

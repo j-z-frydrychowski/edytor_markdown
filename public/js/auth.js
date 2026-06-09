@@ -37,6 +37,11 @@ if (registerForm) {
         const username = document.querySelector('#register-username').value;
         const password = document.querySelector('#register-password').value;
 
+        if (password.length < 8) {
+            showMessage('Hasło musi mieć co najmniej 6 znaków', 'danger');
+            return;
+        }
+        
         try {
             const response = await fetch('/api/register', {
                 method: 'POST',
