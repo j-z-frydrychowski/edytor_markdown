@@ -21,6 +21,7 @@ let ws = null;
 let lastKnownContent = '';
 let isRemoteUpdate = false;
 let lastDocsSnapshot = '';
+let reconnectDelay = 1000;
 
 function saveOfflineEdit(diff) {
     if(!currentDocId) return;
@@ -115,6 +116,7 @@ function connectWebSocket() {
         if (connectionStatus) {
             connectionStatus.textContent = 'Status: Online';
             connectionStatus.className = 'mb-3 text-success fw-bold';
+            reconnectDelay = 1000;
         }
         syncOfflineEdits();
         sendCursorPosition();
@@ -127,7 +129,9 @@ function connectWebSocket() {
         }
 
         if (currentDocId) {
-            setTimeout(connectWebSocket, 3000);
+            console.log(`Próba ponownego połączenia za ${reconnectDelay} ms...`);
+            setTimeout(connectWebSocket, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         }
     };
 
