@@ -137,18 +137,20 @@ app.delete('/api/documents/:id', authenticateToken, async (req, res) => {
         let docs = await getDocuments();
         const docIndex = docs.findIndex(d => d.id === req.params.id);
 
-        if (docIndex === -1) return res.status(404).json({error: 'Dokument nie znaleziony'});
+        if (docIndex === -1) {
+            return res.status(404).json({error: 'Dokument nie znaleziony'});
+        }
         
-        const document = documents.find(doc => doc.id === req.params.id);
-        if (document.ownerId !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'Brak uprawnień do usunięcia tego dokumentu' });
+        if (docs[docIndex].ownerId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({error: 'Brak uprawnień do usuwania dokumentu'});
         }
         
         docs.splice(docIndex, 1);
         await fs.writeFile(docsFile, JSON.stringify(docs, null, 2));
         res.json({message: 'Dokument został usunięty'});
     } catch (error) {
-        res.status(500).json({error: 'Błąd podczas usuwania dokumentu'});
+        console.error('Błąd kasowania:', error);
+        res.status(500).json({error: 'Błąd serwera podczas usuwania dokumentu'});
     }
 });
 
